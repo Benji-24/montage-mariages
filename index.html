@@ -120,7 +120,7 @@ ol#list li.pvrow #pv{margin-top:0}
     </div>
     <div class="styles" id="styles"></div>
     <p class="hint" id="mhint"></p>
-    <label class="file hidden" id="mlab">Appuie pour choisir une musique<input type="file" id="mfile" accept="audio/*"></label>
+    <label class="file hidden" id="mlab">Appuie pour choisir une musique<input type="file" id="mfile"></label>
     <button id="listen" class="ghost" disabled>▶ Écouter la musique du film</button>
   </div>
 
@@ -8925,7 +8925,7 @@ $('mfile').onchange=async e=>{
     musicBuf=await getAC().decodeAudioData(await f.arrayBuffer());
     fileBeat=estimateBeat(musicBuf);
     $('mlab').firstChild.textContent='✓ '+f.name;$('mlab').classList.add('ok');
-  }catch(err){musicBuf=null;fileBeat=null;$('mlab').firstChild.textContent='Musique illisible, essaie un mp3 ou m4a'}
+  }catch(err){musicBuf=null;fileBeat=null;$('mlab').firstChild.textContent='Ce fichier n’est pas une musique lisible. Choisis un MP3, M4A ou WAV.'}
   musicHint();refresh();
 };
 
