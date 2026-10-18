@@ -44,14 +44,21 @@ canvas#tl{width:100%;height:34px;margin-top:12px;border-radius:6px;display:block
 details{margin-top:12px;font-size:14px}
 summary{cursor:pointer;color:var(--accent);font-weight:500}
 ol#list{margin:10px 0 0;padding:0;list-style:none}
-ol#list li{padding:9px 0;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+ol#list li{padding:9px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
 ol#list li.drop{border-top:2px solid var(--fun)}
 ol#list .n{color:var(--muted);width:22px;font-variant-numeric:tabular-nums}
 ol#list .tm{font-variant-numeric:tabular-nums}
 .tag{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--line);color:var(--ink)}
 .tag.key{background:var(--accent);color:#fff}
 .tag.fun{background:var(--fun);color:#fff}
-.tr{font-size:12px;color:var(--muted);margin-left:auto}
+.tr{font-size:12px;color:var(--muted);line-height:1.3}
+.th{width:64px;height:40px;border-radius:6px;background:var(--line);object-fit:cover;flex:none;cursor:pointer}
+.info{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.info .top{display:flex;gap:8px;align-items:center}
+button.del{width:34px;height:34px;padding:0;margin:0;border-radius:50%;background:var(--line);color:var(--ink);font-size:15px;font-weight:500;flex:none}
+#pv{width:100%;border-radius:10px;background:#000;margin-top:10px;display:block;max-height:50vh}
+.removed{font-size:13px;color:var(--muted);margin-top:10px;display:flex;align-items:center;gap:10px}
+.removed button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:10px}
 </style>
 </head>
 <body>
@@ -101,7 +108,12 @@ ol#list .tm{font-variant-numeric:tabular-nums}
     <div class="status" id="astat"></div>
     <canvas id="tl" class="hidden"></canvas>
     <div class="legend hidden" id="legend"><span style="--c:var(--line)">Plans</span><span style="--c:var(--soft)">Gardé</span><span style="--c:var(--accent)">Ralenti</span><span style="--c:var(--fun)">Fête</span></div>
-    <details id="det" class="hidden"><summary>Voir le déroulé du film</summary><ol id="list"></ol></details>
+    <details id="det" class="hidden" open><summary>Déroulé du film</summary>
+      <p class="hint">Appuie sur une image pour voir le plan, et sur ✕ pour le retirer du film.</p>
+      <video id="pv" class="hidden" playsinline muted></video>
+      <ol id="list"></ol>
+      <div class="removed hidden" id="removed"><span id="removedTxt"></span><button id="restore">Tout rétablir</button></div>
+    </details>
   </div>
 
   <div class="card">
@@ -340,7 +352,8 @@ $('vfile').onchange=e=>{
   if(videoURL)URL.revokeObjectURL(videoURL);
   videoURL=URL.createObjectURL(f);
   $('vlab').firstChild.textContent='✓ '+f.name;$('vlab').classList.add('ok');
-  analysis=null;plan=null;partyAuto=null;partyManual=null;$('analyze').disabled=false;$('render').disabled=true;musicHint();
+  analysis=null;plan=null;partyAuto=null;partyManual=null;excluded=[];thumbs=new Map();thumbToken++;
+  if(thumbV){thumbV.remove();thumbV=null}$('pv').classList.add('hidden');$('analyze').disabled=false;$('render').disabled=true;musicHint();
   ['tl','legend','det','partyBox'].forEach(i=>$(i).classList.add('hidden'));$('astat').textContent='';$('abar').style.width='0';
 };
 
@@ -447,6 +460,7 @@ function buildPlan(){
   for(const c of cands){
     if(chosen.length>=maxClips)break;
     if(c.mx>3.5)continue; // raté / mouvement brusque
+    if(excluded.some(([s,e])=>c.t<e&&c.t+DN>s))continue; // plan retiré par toi
     const [a,b]=shots[c.si],cap=1+Math.floor((b-a)*STEP/12);
     if((per[c.si]||0)>=cap)continue;
     if(chosen.some(o=>Math.abs(o.t-c.t)<DN+1.5))continue;
@@ -548,12 +562,57 @@ function drawTimeline(){
   plan.chosen.forEach(c=>{x.fillStyle=c.key?gv('--accent'):(c.fun?gv('--fun'):gv('--soft'));x.fillRect(c.t/STEP*sx,h*.2,Math.max(2,c.src/STEP*sx),h*.6)});
 }
 
+/* ---------- Liste des plans : miniatures, aperçu, suppression ---------- */
+let excluded=[],thumbs=new Map(),thumbToken=0,thumbV=null;
+const tkey=c=>Math.round(c.c0*4);
 function drawList(){
   $('det').classList.remove('hidden');
   $('list').innerHTML=plan.chosen.map((c,k)=>
-    `<li class="${k===plan.partyIdx?'drop':''}"><span class="n">${k+1}</span><span class="tm">${clock(c.t)}</span>`+
+    `<li class="${k===plan.partyIdx?'drop':''}"><span class="n">${k+1}</span>`+
+    `<img class="th" data-k="${k}" alt="" ${thumbs.has(tkey(c))?`src="${thumbs.get(tkey(c))}"`:''}>`+
+    `<div class="info"><div class="top"><span class="tm">${clock(c.t)}</span>`+
     (c.key?`<span class="tag key">Ralenti</span>`:(c.fun?`<span class="tag fun">Fête</span>`:`<span class="tag">Calme</span>`))+
-    `<span class="tr">${c.tr?c.tr.label+' · '+c.tr.why:'Ouverture en fondu'}</span></li>`).join('');
+    `</div><span class="tr">${c.tr?c.tr.label+' · '+c.tr.why:'Ouverture en fondu'}</span></div>`+
+    `<button class="del" data-k="${k}" aria-label="Retirer ce plan">✕</button></li>`).join('');
+  $('removed').classList.toggle('hidden',!excluded.length);
+  $('removedTxt').textContent=`${excluded.length} plan${excluded.length>1?'s':''} retiré${excluded.length>1?'s':''}`;
+  loadThumbs();
+}
+$('list').onclick=e=>{
+  const del=e.target.closest('button.del'),th=e.target.closest('img.th');
+  if(del){
+    const c=plan.chosen[+del.dataset.k];
+    excluded.push([c.c0-DN/2-1.5,c.c0+DN/2+1.5]);
+    $('pv').pause();$('pv').classList.add('hidden');
+    refresh();
+  }else if(th)previewClip(plan.chosen[+th.dataset.k]);
+};
+$('restore').onclick=()=>{excluded=[];refresh()};
+let pvStop=null;
+function previewClip(c){
+  const v=$('pv');
+  if(!v.src||v.dataset.url!==videoURL){v.src=videoURL;v.dataset.url=videoURL}
+  v.classList.remove('hidden');
+  clearTimeout(pvStop);
+  const go=()=>{v.currentTime=c.t;v.playbackRate=c.speed;v.play().catch(()=>{});
+    pvStop=setTimeout(()=>v.pause(),c.src/c.speed*1000)};
+  if(v.readyState>=1)go();else v.onloadedmetadata=()=>{v.onloadedmetadata=null;go()};
+}
+async function loadThumbs(){
+  const my=++thumbToken;
+  if(!thumbV){thumbV=makeVideo();await once(thumbV,'loadedmetadata',15000);try{await thumbV.play()}catch(e){}thumbV.pause()}
+  const tw=128,th=Math.round(128*(thumbV.videoHeight||9)/(thumbV.videoWidth||16));
+  const cv=document.createElement('canvas');cv.width=tw;cv.height=th;const x=cv.getContext('2d');
+  for(const c of plan.chosen){
+    if(my!==thumbToken)return;
+    const key=tkey(c);
+    if(!thumbs.has(key)){
+      await seek(thumbV,c.c0);
+      if(my!==thumbToken)return;
+      x.drawImage(thumbV,0,0,tw,th);thumbs.set(key,cv.toDataURL('image/jpeg',.7));
+    }
+    document.querySelectorAll('img.th').forEach(im=>{const cc=plan.chosen[+im.dataset.k];if(cc&&tkey(cc)===key&&!im.src)im.src=thumbs.get(key)});
+  }
 }
 
 /* ---------- 5. MONTAGE ---------- */
@@ -567,7 +626,7 @@ function makePainter(ctx,cw,ch){
   function clip(k,t,alpha,blur,im){
     const c=chosen[k],p=Math.min(1,Math.max(0,(t-starts[k])/c.T));
     const amp=c.key?.08:.05;
-    const z=k%2?1+amp+.02-amp*p:1.02+amp*p;
+    const z=1.02+amp*p; // zoom lent, toujours dans le même sens pour des transitions douces
     ctx.filter=(baseF+(blur>.3?` blur(${blur.toFixed(1)}px)`:'')).trim()||'none';
     const x=(cw-cw*z)/2,y=(ch-ch*z)/2,w=cw*z,h=ch*z;
     ctx.globalAlpha=alpha;ctx.drawImage(im.a,x,y,w,h);
@@ -660,35 +719,47 @@ async function renderFrameByFrame(track,offset,vids,cw,ch,ctx){
     if(fail)throw fail;
   }
 
-  // images
+  // images : une seule vidéo lue à la fois (l'iPhone saccade s'il doit jongler entre deux)
   $('rstat').textContent='Mesure de la vidéo…';
-  const srcFps=await sourceFps(vids[0]);
-  const caches=vids.map(()=>new Map()),pools=vids.map(()=>[]);
-  async function frameAt(vi,i){
-    const cache=caches[vi];
-    if(cache.has(i)){const c=cache.get(i);cache.delete(i);cache.set(i,c);return c}
-    const v=vids[vi];
+  const v=vids[0],srcFps=await sourceFps(v);
+  const pool=[],cache=new Map(),tail=new Map();
+  const mk=()=>pool.pop()||Object.assign(document.createElement('canvas'),{width:cw,height:ch});
+  async function grab(i){
     await seek(v,Math.min(v.duration-.02,(i+.5)/srcFps));
-    let cv;
-    if(cache.size>=4){const k=cache.keys().next().value;cv=cache.get(k);cache.delete(k)}
-    else{cv=document.createElement('canvas');cv.width=cw;cv.height=ch}
-    cv.getContext('2d').drawImage(v,0,0,cw,ch);
-    cache.set(i,cv);return cv;
+    const cv=mk();cv.getContext('2d').drawImage(v,0,0,cw,ch);return cv;
+  }
+  async function frameAt(i){
+    if(tail.has(i))return tail.get(i);
+    if(cache.has(i)){const c=cache.get(i);cache.delete(i);cache.set(i,c);return c}
+    const cv=await grab(i);cache.set(i,cv);
+    if(cache.size>6){const k=cache.keys().next().value;pool.push(cache.get(k));cache.delete(k)}
+    return cv;
+  }
+  function srcIdx(k,t){
+    const c=chosen[k],x=(c.t+(t-starts[k])*c.speed)*srcFps,i0=Math.floor(x+1e-4),m=x-i0;
+    if(c.speed>=1||m<.04)return {a:m>.96?i0+1:i0};
+    return {a:i0,b:i0+1,m}; // ralenti : on fond l'image dans la suivante
   }
   async function srcImage(k,t){
-    const c=chosen[k],s=c.t+(t-starts[k])*c.speed,x=s*srcFps,i0=Math.floor(x+1e-4),m=x-i0;
-    if(c.speed>=1||m<.04)return {a:await frameAt(k%2,m>.96?i0+1:i0)};
-    // ralenti : on fond l'image dans la suivante
-    return {a:await frameAt(k%2,i0),b:await frameAt(k%2,i0+1),m};
+    const s=srcIdx(k,t);
+    return s.b==null?{a:await frameAt(s.a)}:{a:await frameAt(s.a),b:await frameAt(s.b),m:s.m};
   }
   const {paint,active}=makePainter(ctx,cw,ch);
   const venc=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>fail=e});
   venc.configure(vcfg);
   const N=Math.round(total*FPS),t0=performance.now();
+  let tailFor=-1;
   for(let f=0;f<N;f++){
     if(fail)throw fail;
-    const t=f/FPS,imgs={};
-    for(const k of active(t))imgs[k]=await srcImage(k,t);
+    const t=f/FPS,imgs={},act=active(t);
+    if(act.length>1&&tailFor!==act[1]){
+      // début d'une transition : on met de côté, d'un coup, toutes les images du plan qui sort
+      tailFor=act[1];const a=act[0],need=new Set();
+      for(let g=f;g<N;g++){const tt=g/FPS;if(!active(tt).includes(a))break;const s=srcIdx(a,tt);need.add(s.a);if(s.b!=null)need.add(s.b)}
+      for(const i of [...need].sort((x,y)=>x-y))if(!tail.has(i))tail.set(i,cache.has(i)?(()=>{const c=cache.get(i);cache.delete(i);return c})():await grab(i));
+    }
+    if(act.length===1&&tail.size&&act[0]===tailFor){tail.forEach(c=>pool.push(c));tail.clear()}
+    for(const k of act)imgs[k]=await srcImage(k,t);
     paint(t,k=>imgs[k]);
     const vf=new VideoFrame(ctx.canvas,{timestamp:Math.round(f*1e6/FPS),duration:Math.round(1e6/FPS)});
     venc.encode(vf,{keyFrame:f%(FPS*2)===0});vf.close();
