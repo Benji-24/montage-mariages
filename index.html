@@ -724,8 +724,17 @@ async function renderFrameByFrame(track,offset,vids,cw,ch,ctx){
   const v=vids[0],srcFps=await sourceFps(v);
   const pool=[],cache=new Map(),tail=new Map();
   const mk=()=>pool.pop()||Object.assign(document.createElement('canvas'),{width:cw,height:ch});
+  // saut précis : on attend que la nouvelle image soit vraiment affichée (sinon Safari peut redonner l'ancienne)
+  let rvfcOk=!!v.requestVideoFrameCallback,rvfcTried=0;
+  async function seekExact(t){
+    const p=once(v,'seeked');
+    let q=null,fired=false;
+    if(rvfcOk)q=new Promise(r=>{v.requestVideoFrameCallback(()=>{fired=true;r()});setTimeout(r,rvfcTried<3?400:250)});
+    v.currentTime=t;await p;
+    if(q){await q;if(!fired&&++rvfcTried>=3)rvfcOk=false;else if(fired)rvfcTried=3}
+  }
   async function grab(i){
-    await seek(v,Math.min(v.duration-.02,(i+.5)/srcFps));
+    await seekExact(Math.min(v.duration-.02,(i+.5)/srcFps));
     const cv=mk();cv.getContext('2d').drawImage(v,0,0,cw,ch);return cv;
   }
   async function frameAt(i){
