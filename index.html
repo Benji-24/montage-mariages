@@ -83,6 +83,16 @@ body.ready main .card:nth-of-type(3){animation-delay:.24s}
 body.ready main .card:nth-of-type(4){animation-delay:.31s}
 body.ready main .card:nth-of-type(5){animation-delay:.38s}
 @media (prefers-reduced-motion:reduce){#splash *{animation-duration:.01s!important;animation-delay:0s!important}#splash .petal{display:none}main .card,main h1,main .sub{opacity:1;transform:none}}
+
+.styles{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.styles button{width:auto;flex:1 1 30%;margin:0;padding:9px 6px;font-size:13px;font-weight:500;background:transparent;color:var(--ink);border:1.5px solid var(--line);border-radius:12px;white-space:nowrap}
+.styles button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--ink)}
+ol#list li.pvrow{display:block;padding:8px 0 4px;border-top:1px solid var(--line)}
+ol#list li.pvrow #pv{margin-top:0}
+#splash .sig{display:flex;align-items:center;gap:12px;margin-top:26px;font-size:12px;letter-spacing:.3em;color:var(--accent);font-weight:600;opacity:0;animation:rise .8s 1.45s ease forwards}
+#splash .sig span{display:block;width:34px;height:1px;background:var(--accent);opacity:.6}
+.credit{text-align:center;font-size:12px;letter-spacing:.08em;color:var(--muted);margin-top:22px}
+.credit b{color:var(--accent);font-weight:600;letter-spacing:.14em}
 </style>
 </head>
 <body>
@@ -90,6 +100,7 @@ body.ready main .card:nth-of-type(5){animation-delay:.38s}
   <svg viewBox="0 0 170 110"><circle class="ring r1" cx="62" cy="62" r="34"/><circle class="ring r2" cx="108" cy="62" r="34"/><path class="gem" d="M62 12l9 10-9 10-9-10z"/></svg>
   <div class="sp-title">Montage Mariage</div>
   <div class="sp-sub">Ton film, en quelques gestes</div>
+  <div class="sig"><span></span>by_ben<span></span></div>
 </div>
 <main>
   <h1>Montage Mariage</h1>
@@ -107,6 +118,7 @@ body.ready main .card:nth-of-type(5){animation-delay:.38s}
       <button data-m="file">Ma musique</button>
       <button data-m="none">Aucune</button>
     </div>
+    <div class="styles" id="styles"></div>
     <p class="hint" id="mhint"></p>
     <label class="file hidden" id="mlab">Appuie pour choisir une musique<input type="file" id="mfile" accept="audio/*"></label>
     <button id="listen" class="ghost" disabled>▶ Écouter la musique du film</button>
@@ -138,8 +150,8 @@ body.ready main .card:nth-of-type(5){animation-delay:.38s}
     <canvas id="tl" class="hidden"></canvas>
     <div class="legend hidden" id="legend"><span style="--c:var(--line)">Plans</span><span style="--c:var(--soft)">Gardé</span><span style="--c:var(--accent)">Ralenti</span><span style="--c:var(--fun)">Fête</span></div>
     <details id="det" class="hidden" open><summary>Déroulé du film</summary>
-      <p class="hint">Appuie sur une image pour voir le plan, et sur ✕ pour le retirer du film.</p>
-      <video id="pv" class="hidden" playsinline muted></video>
+      <p class="hint">Appuie sur une image pour voir le plan juste au-dessus, et sur ✕ pour le retirer du film.</p>
+      <div id="pvhold" class="hidden"><video id="pv" class="hidden" playsinline muted></video></div>
       <ol id="list"></ol>
       <div class="removed hidden" id="removed"><span id="removedTxt"></span><button id="restore">Tout rétablir</button></div>
     </details>
@@ -154,6 +166,7 @@ body.ready main .card:nth-of-type(5){animation-delay:.38s}
     <video id="out" class="hidden" controls playsinline></video>
     <button id="share" class="hidden">Enregistrer / partager la vidéo</button>
   </div>
+  <footer class="credit">Conçu et créé par <b>by_ben</b></footer>
 </main>
 <div id="vids"></div>
 
@@ -8850,6 +8863,16 @@ const $=id=>document.getElementById(id);
 const STEP=0.25;   // une image analysée toutes les 0,25 s
 const GEN_BPM=100; // tempo de la musique composée
 const FPS=30;      // images par seconde du film
+// Styles de musique composée
+const STYLES=[
+  {id:'piano',  label:'🎹 Piano',          hint:'piano doux'},
+  {id:'violon', label:'🎻 Violon',         hint:'violon et cordes'},
+  {id:'guitare',label:'🎸 Guitare',        hint:'guitare acoustique'},
+  {id:'harpe',  label:'✨ Harpe',          hint:'harpe féerique'},
+  {id:'boite',  label:'🎐 Boîte à musique',hint:'boîte à musique'},
+  {id:'electro',label:'🎧 Électro chill',  hint:'électro douce'}
+];
+let musicStyle='piano';
 let videoFile=null,videoURL=null,musicBuf=null,fileBeat=null,musicMode='gen',analysis=null,plan=null,ac=null,outFile=null,wake=null,prevSrc=null;
 let partyAuto=null,partyManual=null;
 
@@ -8875,11 +8898,12 @@ function showParty(){$('partyv').textContent=(partyManual==null?'Auto · ':'')+c
 /* ---------- MUSIQUE ---------- */
 function musicHint(){
   const h={
-    gen:'Une musique originale composée pour ton film : douce au piano au début, puis festive avec rythme quand la fête commence. Chaque transition tombe sur le temps.',
+    gen:`Une musique originale (${STYLES.find(x=>x.id===musicStyle).hint}) composée pour ton film : douce au début, puis festive quand la fête commence. Chaque transition tombe sur le temps.`,
     file:fileBeat?`Rythme détecté : ${Math.round(fileBeat.bpm)} temps par minute. Les transitions seront calées dessus.`:'Choisis ta musique : le site détecte son rythme et cale les transitions dessus.',
     none:'Sans musique. Les transitions restent calées sur un rythme régulier.'};
   $('mhint').textContent=h[musicMode];
   $('mlab').classList.toggle('hidden',musicMode!=='file');
+  $('styles').classList.toggle('hidden',musicMode!=='gen');
   $('listen').classList.toggle('hidden',musicMode==='none');
   $('listen').disabled=musicMode==='gen'?!plan:!musicBuf;
 }
@@ -8888,6 +8912,10 @@ document.querySelectorAll('#mseg button').forEach(bt=>bt.onclick=()=>{
   document.querySelectorAll('#mseg button').forEach(x=>x.classList.toggle('on',x===bt));
   musicHint();refresh();
 });
+$('styles').innerHTML=STYLES.map(x=>`<button data-s="${x.id}" class="${x.id===musicStyle?'on':''}">${x.label}</button>`).join('');
+$('styles').onclick=e=>{const bt=e.target.closest('button');if(!bt)return;
+  stopPreview();musicStyle=bt.dataset.s;if(plan)plan.music=null;
+  document.querySelectorAll('#styles button').forEach(x=>x.classList.toggle('on',x===bt));musicHint()};
 musicHint();
 
 $('mfile').onchange=async e=>{
@@ -8923,130 +8951,136 @@ function estimateBeat(buf){
 }
 function beatLen(){return musicMode==='file'&&fileBeat?fileBeat.beat:60/GEN_BPM}
 
-// Composition d'une musique originale : calme au piano, montée, puis festive quand la fête commence
+
+// Composition d'une musique originale : calme au début, puis festive quand la fête commence.
+// Aucun effet sonore sur les transitions, et la fin baisse doucement.
 async function composeMusic(p){
-  const sr=44100,end=p.total,len=Math.ceil((end+1.5)*sr);
+  const style=musicStyle;
+  const sr=44100,end=p.total,len=Math.ceil((end+.5)*sr);
   const O=new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(2,len,sr);
   const b=p.beat,bar=4*b,mid=x=>440*Math.pow(2,(x-69)/12);
   const master=O.createGain(),comp=O.createDynamicsCompressor();
   comp.threshold.value=-14;comp.ratio.value=3;
   master.connect(comp);comp.connect(O.destination);
   master.gain.setValueAtTime(0,0);master.gain.linearRampToValueAtTime(.6,1.5);
-  master.gain.setValueAtTime(.6,Math.max(1.6,end-2.5));master.gain.linearRampToValueAtTime(0,end+.8);
+  master.gain.setValueAtTime(.6,Math.max(1.6,end-3.5));master.gain.linearRampToValueAtTime(0,end); // la musique baisse simplement
   const rev=O.createConvolver(),ir=O.createBuffer(2,sr*3,sr);
   for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3)}
-  rev.buffer=ir;const wet=O.createGain();wet.gain.value=.45;rev.connect(wet);wet.connect(master);
+  rev.buffer=ir;const wet=O.createGain();wet.gain.value=style==='boite'||style==='harpe'?.6:.45;rev.connect(wet);wet.connect(master);
   const bus=O.createGain(),dry=O.createGain();dry.gain.value=.75;bus.connect(dry);dry.connect(master);bus.connect(rev);
   const drums=O.createGain();drums.gain.value=.9;drums.connect(master);
   const noise=O.createBuffer(1,sr*2,sr);{const d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+  const stopAt=x=>Math.min(x,end+.4);
 
-  // Do – Sol – La mineur – Fa
-  const CH=[{r:36,v:[60,64,67,71,74]},{r:43,v:[59,62,67,71,74]},{r:45,v:[60,64,69,72,76]},{r:41,v:[60,65,69,72,77]}];
-  function piano(t,m,vel,dec){
-    const o=O.createOscillator(),o2=O.createOscillator(),g=O.createGain(),g2=O.createGain(),lp=O.createBiquadFilter();
-    o.type='sine';o.frequency.value=mid(m);o2.type='triangle';o2.frequency.value=mid(m)*2;g2.gain.value=.12;
-    lp.type='lowpass';lp.frequency.value=2600;
-    o.connect(g);o2.connect(g2);g2.connect(g);g.connect(lp);lp.connect(bus);
-    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vel,t+.008);g.gain.exponentialRampToValueAtTime(.0004,t+dec);
-    o.start(t);o2.start(t);o.stop(t+dec+.05);o2.stop(t+dec+.05);
+  /* --- instruments --- */
+  function voice(t,m,{types=['sine'],mults=[1],gains=[1],vel=.15,att=.008,dec=2,lp=2600,lpEnd=0,det=0,vib=0,sus=0,out=bus}){
+    if(t>=end)return;
+    const g=O.createGain(),f=O.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(lp,t);
+    if(lpEnd)f.frequency.exponentialRampToValueAtTime(lpEnd,t+Math.min(dec,.6));
+    g.connect(f);f.connect(out);
+    const T=stopAt(t+(sus||0)+dec+.05);
+    types.forEach((ty,i)=>{const o=O.createOscillator(),gg=O.createGain();o.type=ty;o.frequency.value=mid(m)*mults[i];if(det)o.detune.value=i%2?det:-det;
+      if(vib){const l=O.createOscillator(),lg=O.createGain();l.frequency.value=5.3;lg.gain.setValueAtTime(0,t);lg.gain.linearRampToValueAtTime(vib,t+.35);l.connect(lg);lg.connect(o.detune);l.start(t);l.stop(T)}
+      gg.gain.value=gains[i];o.connect(gg);gg.connect(g);o.start(t);o.stop(T)});
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vel,t+att);
+    if(sus){g.gain.setValueAtTime(vel,t+Math.max(att,sus));g.gain.linearRampToValueAtTime(0,stopAt(t+sus+dec))}
+    else g.gain.exponentialRampToValueAtTime(.0004,stopAt(t+dec));
   }
+  const I={
+    piano:(t,m,v,d=2.2)=>voice(t,m,{types:['sine','triangle'],mults:[1,2],gains:[1,.12],vel:v,dec:d}),
+    guitare:(t,m,v,d=1.6)=>voice(t,m,{types:['sawtooth','triangle'],mults:[1,1],gains:[.5,.6],vel:v*.9,att:.004,dec:d,lp:3800,lpEnd:700}),
+    harpe:(t,m,v,d=2.8)=>voice(t,m,{types:['triangle','sine'],mults:[1,2],gains:[1,.25],vel:v,att:.003,dec:d,lp:3600,lpEnd:1500}),
+    boite:(t,m,v,d=1.4)=>voice(t,m+12,{types:['sine','sine','sine'],mults:[1,2.76,5.4],gains:[1,.25,.08],vel:v*.8,att:.002,dec:d,lp:7000}),
+    electro:(t,m,v,d=.5)=>voice(t,m,{types:['square','sawtooth'],mults:[1,1.005],gains:[.4,.5],vel:v*.8,att:.004,dec:d,lp:3200,lpEnd:400}),
+    violon:(t,m,v,len)=>voice(t,m,{types:['sawtooth','sawtooth'],mults:[1,1],gains:[.5,.5],det:6,vib:12,vel:v*.55,att:.22,sus:len,dec:.45,lp:2400}),
+    cordes:(t,m,v,len)=>voice(t,m,{types:['sawtooth','sawtooth'],mults:[1,1],gains:[.5,.5],det:9,vel:v*.4,att:.6,sus:len,dec:.9,lp:1300}),
+  };
+  const lead=I[style]||I.piano;
   function pad(t0,t1,ms,vol,cut=650){
     for(const m of ms)for(const det of [-7,7]){
+      if(t0>=end)return;
       const o=O.createOscillator(),lp=O.createBiquadFilter(),g=O.createGain();
       o.type='sawtooth';o.frequency.value=mid(m);o.detune.value=det;lp.type='lowpass';lp.frequency.value=cut;
       g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(vol,t0+.6);
-      g.gain.setValueAtTime(vol,Math.max(t0+.6,t1));g.gain.linearRampToValueAtTime(0,t1+.8);
-      o.connect(lp);lp.connect(g);g.connect(bus);o.start(t0);o.stop(t1+.9);
+      g.gain.setValueAtTime(vol,Math.max(t0+.6,t1));g.gain.linearRampToValueAtTime(0,stopAt(t1+.8));
+      o.connect(lp);lp.connect(g);g.connect(bus);o.start(t0);o.stop(stopAt(t1+.9));
     }
   }
-  function noiseHit(t,dur,type,freq,vol,out=drums,q=.8){
+  function noiseHit(t,dur,type,freq,vol,out=drums){
+    if(t>=end)return;
     const s=O.createBufferSource(),f=O.createBiquadFilter(),g=O.createGain();
-    s.buffer=noise;f.type=type;f.frequency.value=freq;f.Q.value=q;
+    s.buffer=noise;f.type=type;f.frequency.value=freq;f.Q.value=.8;
     g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0005,t+dur);
-    s.connect(f);f.connect(g);g.connect(out);s.start(t,Math.random()*1.5);s.stop(t+dur+.02);
+    s.connect(f);f.connect(g);g.connect(out);s.start(t,Math.random()*1.5);s.stop(stopAt(t+dur+.02));
   }
-  function kick(t,v=.9){const o=O.createOscillator(),g=O.createGain();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+.12);
-    g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.38);o.connect(g);g.connect(drums);o.start(t);o.stop(t+.4)}
-  const clap=(t,v=.35)=>{noiseHit(t,.16,'bandpass',1500,v);noiseHit(t+.012,.12,'bandpass',1100,v*.6)};
+  function kick(t,v=.9){if(t>=end)return;const o=O.createOscillator(),g=O.createGain();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+.12);
+    g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.38);o.connect(g);g.connect(drums);o.start(t);o.stop(stopAt(t+.4))}
+  const clap=(t,v=.33)=>{noiseHit(t,.16,'bandpass',1500,v);noiseHit(t+.012,.12,'bandpass',1100,v*.6)};
   const hat=(t,v=.09,open=false)=>noiseHit(t,open?.22:.045,'highpass',7500,v);
-  const crash=(t,v=.18)=>{noiseHit(t,2.2,'highpass',5000,v);noiseHit(t,1.6,'bandpass',3200,v*.5,bus)};
-  function bass(t,m,dur,v=.22){const o=O.createOscillator(),lp=O.createBiquadFilter(),g=O.createGain();o.type='sawtooth';o.frequency.value=mid(m);
+  function bass(t,m,dur,v=.22){if(t>=end)return;const o=O.createOscillator(),lp=O.createBiquadFilter(),g=O.createGain();o.type=style==='electro'?'sine':'sawtooth';o.frequency.value=mid(m);
     lp.type='lowpass';lp.frequency.value=420;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.01);g.gain.exponentialRampToValueAtTime(.001,t+dur);
-    o.connect(lp);lp.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.02)}
-  function stab(t,ms,v=.035){for(const m of ms)for(const det of [-9,9]){const o=O.createOscillator(),lp=O.createBiquadFilter(),g=O.createGain();
+    o.connect(lp);lp.connect(g);g.connect(master);o.start(t);o.stop(stopAt(t+dur+.02))}
+  function stab(t,ms,v=.035){for(const m of ms)for(const det of [-9,9]){if(t>=end)return;const o=O.createOscillator(),lp=O.createBiquadFilter(),g=O.createGain();
     o.type='sawtooth';o.frequency.value=mid(m);o.detune.value=det;lp.type='lowpass';lp.frequency.value=2200;
-    g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.2);o.connect(lp);lp.connect(g);g.connect(bus);o.start(t);o.stop(t+.22)}}
-  function swell(tE,dur,v=.05){
-    const s=O.createBufferSource(),bp=O.createBiquadFilter(),g=O.createGain();
-    s.buffer=noise;s.loop=true;bp.type='bandpass';bp.frequency.value=1400;bp.Q.value=.7;
-    const t0=Math.max(0,tE-dur);g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(v,tE);g.gain.linearRampToValueAtTime(0,tE+.35);
-    s.connect(bp);bp.connect(g);g.connect(bus);s.start(t0);s.stop(tE+.4);
-  }
-  function riser(t0,t1){ // montée avant la fête
-    const s=O.createBufferSource(),hp=O.createBiquadFilter(),g=O.createGain();
-    s.buffer=noise;s.loop=true;hp.type='highpass';hp.frequency.setValueAtTime(300,t0);hp.frequency.exponentialRampToValueAtTime(7000,t1);
-    g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(.09,t1);g.gain.linearRampToValueAtTime(0,t1+.05);
-    s.connect(hp);hp.connect(g);g.connect(bus);s.start(t0);s.stop(t1+.1);
-  }
+    g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.2);o.connect(lp);lp.connect(g);g.connect(bus);o.start(t);o.stop(stopAt(t+.22))}}
 
+  // Do – Sol – La mineur – Fa
+  const CH=[{r:36,v:[60,64,67,71,74]},{r:43,v:[59,62,67,71,74]},{r:45,v:[60,64,69,72,76]},{r:41,v:[60,65,69,72,77]}];
   const keySpans=p.chosen.map((c,k)=>c.key?[p.starts[k],p.starts[k]+c.T]:null).filter(Boolean);
   const inKey=t=>keySpans.some(([a,z])=>t>=a&&t<z);
-  const tf=Math.max(bar,end-3.6); // accord final
-  const drop=p.partyIdx<p.chosen.length?Math.min(p.events[p.partyIdx],tf):tf;
-  const calmEnd=Math.min(drop,tf);
-
-  // 1. partie calme : piano, nappe, basse douce
+  const drop=p.partyIdx<p.chosen.length?p.events[p.partyIdx]:end;
   const pat=[0,2,1,3];
-  for(let k=0;k*bar<calmEnd;k++){
-    const t=k*bar,c=CH[k%4];
-    pad(t,Math.min(calmEnd,t+bar),c.v.slice(0,3).map(m=>m-12),.016);
-    piano(t,c.r,.3,3.2);
+
+  // 1. partie calme
+  for(let k=0;k*bar<drop;k++){
+    const t=k*bar,c=CH[k%4],tE=Math.min(drop,t+bar);
+    if(style==='violon'){
+      I.cordes(t,c.v[0]-12,.18,tE-t);I.cordes(t,c.v[1]-12,.15,tE-t);I.cordes(t,c.v[2]-12,.13,tE-t);
+      I.cordes(t,c.r+12,.2,tE-t);
+      const mel=k%2?[c.v[4]+12,c.v[2]+12]:[c.v[2]+12,c.v[3]+12];
+      for(let h=0;h<2;h++){const th=t+h*2*b;if(th<drop)I.violon(th,mel[h],.2,Math.min(2*b,drop-th)-.05)}
+      continue;
+    }
+    pad(t,tE,c.v.slice(0,3).map(m=>m-12),style==='electro'?.02:.016,style==='electro'?900:650);
+    (style==='electro'?(tt,m,v)=>bass(tt,m+12,bar*.9,.16):(tt,m,v)=>lead(tt,m,v,3.2))(t,c.r,.3);
     for(let q=0;q<4;q++){
-      const tq=t+q*b;if(tq>=calmEnd)break;
+      const tq=t+q*b;if(tq>=drop)break;
       const key=inKey(tq);
       if(key&&q%2)continue;
-      piano(tq,c.v[pat[q]],q===0?.2:.13,key?3.2:2.4);
-      if(!key&&k>0&&q%2)piano(tq+b/2,c.v[4],.07,1.8);
+      lead(tq,c.v[pat[q]],q===0?.2:.13);
+      if(!key&&k>0&&q%2&&t+q*b+b/2<drop)lead(tq+b/2,c.v[4],.07);
     }
   }
-  // 2. montée vers la fête
-  if(drop<tf){
-    const r0=Math.max(bar*.5,drop-2*bar);
-    riser(r0,drop);
-    for(let t=r0,i=0;t<drop-.01;i++){const left=drop-t,stp=left>bar?b/2:b/4;noiseHit(t,.1,'bandpass',1800,.06+.18*(1-left/(drop-r0)));t+=stp}
+  // 2. petite montée à la batterie juste avant la fête (pas d'effet sur la transition elle-même)
+  if(drop<end){
+    const r0=Math.max(bar*.5,drop-bar);
+    for(let t=r0;t<drop-.01;){const left=drop-t,stp=left>bar/2?b/2:b/4;noiseHit(t,.1,'bandpass',1800,.05+.12*(1-left/(drop-r0)));t+=stp}
   }
-  // 3. partie festive : batterie, basse qui pulse, accords rythmés
+  // 3. partie festive
   const fp=[2,3,0,1];
-  for(let j=0;drop+j*bar<tf;j++){
+  for(let j=0;drop+j*bar<end;j++){
     const t=drop+j*bar,c=CH[fp[j%4]];
-    pad(t,Math.min(tf,t+bar),c.v.slice(0,3),.012,1400);
+    if(style==='violon'){I.cordes(t,c.v[0],.12,bar);I.cordes(t,c.v[2],.1,bar)}
+    else pad(t,Math.min(end,t+bar),c.v.slice(0,3),.012,1400);
+    if(style==='violon')for(let h=0;h<2;h++)I.violon(t+h*2*b,(h?c.v[2]:c.v[4])+12,.22,2*b-.05);
     for(let q=0;q<4;q++){
-      const tb=t+q*b;if(tb>=tf)break;
+      const tb=t+q*b;if(tb>=end)break;
       const key=inKey(tb);
       kick(tb,key?.6:.9);
       if(q%2&&!key)clap(tb);
       hat(tb+b/2,.1,!key&&q===3);
       if(!key){hat(tb+b/4,.04);hat(tb+3*b/4,.04)}
       bass(tb+b/2,c.r+12,b*.45);if(q===0)bass(tb,c.r+12,b*.4,.16);
-      if(!key)stab(tb+b/2,c.v.slice(0,3).map(m=>m+12));
-      piano(tb,c.v[pat[q]]+12,.09,1.4);
+      if(key)continue;
+      const chord=c.v.slice(0,3).map(m=>m+12);
+      if(style==='guitare'){if(q%2===0)chord.forEach((m,i)=>I.guitare(tb+i*.018,m-12,.11,1));else I.guitare(tb+b/2,c.v[1],.08,.4)}
+      else if(style==='violon')chord.forEach(m=>I.violon(tb+b/2,m-12,.08,.12));
+      else if(style==='electro')stab(tb+b/2,chord);
+      else if(style==='piano')chord.forEach(m=>I.piano(tb+b/2,m-12,.05,.5));
+      if(style!=='violon')lead(tb,c.v[pat[q]]+(style==='boite'?0:12),.09,style==='electro'?.3:1.4);
+      if(style==='harpe'||style==='boite')lead(tb+b/2,c.v[pat[(q+2)%4]]+12,.06);
     }
   }
-  if(drop<tf){crash(drop,.22);kick(drop)}
-
-  // accents sur les transitions
-  p.chosen.forEach((c,k)=>{
-    if(!k||k===p.partyIdx)return;const E=p.events[k];if(E>=tf)return;
-    if(E<drop){
-      const cc=CH[Math.floor(E/bar+1e-6)%4];
-      if(c.tr.type==='cut'){piano(E,cc.r+12,.26,2.6);piano(E,cc.v[2]+12,.1,2.6)}
-      else{swell(E,c.tr.F+.5);piano(E,cc.v[4]+12,.09,3.5)}
-    }else if(c.tr.type!=='cut')swell(E,c.tr.F+.4,.06);
-  });
-  // final
-  [CH[0].r,CH[0].r+12,...CH[0].v].forEach((m,i)=>piano(tf+i*.05,m,.17,4.5));
-  if(drop<tf){crash(tf,.2);kick(tf);bass(tf,CH[0].r+12,2,.2)}
-  pad(tf,end,CH[0].v.slice(0,3),.014,900);
   return O.startRendering();
 }
 
@@ -9284,6 +9318,7 @@ let excluded=[],thumbs=new Map(),thumbToken=0,thumbV=null;
 const tkey=c=>Math.round(c.c0*4);
 function drawList(){
   $('det').classList.remove('hidden');
+  const pv=$('pv');pv.pause();pv.classList.add('hidden');$('pvhold').appendChild(pv);
   $('list').innerHTML=plan.chosen.map((c,k)=>
     `<li class="${k===plan.partyIdx?'drop':''}"><span class="n">${k+1}</span>`+
     `<img class="th" data-k="${k}" alt="" ${thumbs.has(tkey(c))?`src="${thumbs.get(tkey(c))}"`:''}>`+
@@ -9302,12 +9337,16 @@ $('list').onclick=e=>{
     excluded.push([c.c0-DN/2-1.5,c.c0+DN/2+1.5]);
     $('pv').pause();$('pv').classList.add('hidden');
     refresh();
-  }else if(th)previewClip(plan.chosen[+th.dataset.k]);
+  }else if(th)previewClip(plan.chosen[+th.dataset.k],th.closest('li'));
 };
 $('restore').onclick=()=>{excluded=[];refresh()};
 let pvStop=null;
-function previewClip(c){
+function previewClip(c,li){
   const v=$('pv');
+  // l'aperçu s'ouvre juste au-dessus du plan choisi
+  let row=$('list').querySelector('li.pvrow');
+  if(!row){row=document.createElement('li');row.className='pvrow'}
+  row.appendChild(v);li.parentNode.insertBefore(row,li);
   if(!v.src||v.dataset.url!==videoURL){v.src=videoURL;v.dataset.url=videoURL}
   v.classList.remove('hidden');
   clearTimeout(pvStop);
@@ -9738,7 +9777,7 @@ $('share').onclick=async()=>{
   let gone=false;
   const go=()=>{if(gone)return;gone=true;sp.classList.add('out');document.body.classList.add('ready');setTimeout(()=>sp.remove(),800)};
   sp.addEventListener('click',go);
-  setTimeout(go,reduce?300:2400);
+  setTimeout(go,reduce?600:2900);
 })();
 </script>
 </body>
