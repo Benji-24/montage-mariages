@@ -103,7 +103,7 @@ ol#list li.pvrow #pv{margin-top:0}
   <div class="sp-title">Montage Mariage</div>
   <div class="sp-sub">Ton film, en quelques gestes</div>
   <div class="sig"><span></span>by_ben<span></span></div>
-  <div class="sp-ver">v2.4 · 26 oct.</div>
+  <div class="sp-ver">v2.5 · 26 oct.</div>
 </div>
 <main>
   <h1>Montage Mariage</h1>
@@ -170,7 +170,7 @@ ol#list li.pvrow #pv{margin-top:0}
     <video id="out" class="hidden" controls playsinline></video>
     <button id="share" class="hidden">Enregistrer / partager la vidéo</button>
   </div>
-  <footer class="credit">Conçu et créé par <b>by_ben</b><span class="ver">Version v2.4 · 26 oct.</span></footer>
+  <footer class="credit">Conçu et créé par <b>by_ben</b><span class="ver">Version v2.5 · 26 oct.</span></footer>
 </main>
 <div id="vids"></div>
 
@@ -9457,8 +9457,11 @@ function drawRot(x,f,rot,cw,ch){
   else x.drawImage(f,0,0,cw,ch);
   x.restore();
 }
+let fastFail='';
 async function openSource(file){
-  if(!file||!window.VideoDecoder||!window.EncodedVideoChunk||!window.MP4Box)return null;
+  if(!file)return (fastFail='vidéo introuvable',null);
+  if(!window.VideoDecoder||!window.EncodedVideoChunk)return (fastFail='Safari trop ancien',null);
+  if(!window.MP4Box)return (fastFail='lecteur MP4 absent',null);
   const mp4=MP4Box.createFile();let info=null,err=null;
   mp4.onReady=i=>info=i;mp4.onError=e=>err=e;
   let pos=0;const CH=2*1024*1024;
@@ -9467,23 +9470,26 @@ async function openSource(file){
     const next=mp4.appendBuffer(ab);
     pos=(typeof next==='number'&&next>pos)?next:pos+ab.byteLength;
   }
-  if(!info||!info.videoTracks||!info.videoTracks.length)return null;
+  if(!info||!info.videoTracks||!info.videoTracks.length)return (fastFail='format de fichier non lu'+(err?' ('+err+')':''),null);
   const tr=info.videoTracks[0],trak=mp4.getTrackById(tr.id),ts=trak.mdia.mdhd.timescale;
   let desc;
   for(const e of trak.mdia.minf.stbl.stsd.entries){const box=e.avcC||e.hvcC||e.vpcC||e.av1C;if(box){const s=new DataStream(undefined,0,DataStream.BIG_ENDIAN);box.write(s);desc=new Uint8Array(s.buffer,8);break}}
   let mediaTime=0;
   try{const el=trak.edts&&trak.edts.elst&&trak.edts.elst.entries;if(el&&el.length){const e0=el.find(e=>e.media_time>=0);if(e0)mediaTime=e0.media_time}}catch(e){}
   const samples=trak.samples.map(s=>({off:s.offset,size:s.size,pts:(s.cts-mediaTime)/ts,dur:s.duration/ts,key:!!s.is_sync}));
-  if(!samples.length)return null;
+  if(!samples.length)return (fastFail='aucune image trouvée',null);
   const pts=samples.map(s=>s.pts).sort((a,b)=>a-b),d=[];for(let i=1;i<pts.length;i++)if(pts[i]>pts[i-1])d.push(pts[i]-pts[i-1]);
   d.sort((a,b)=>a-b);const fdur=d[d.length>>1]||1/30;
-  const codecs=[tr.codec];if(/^dv/.test(tr.codec))codecs.push(tr.codec.replace(/^dv[hH][1e]/,'hvc1').replace(/^dva[1v]/,'avc1'));
+  const codecs=[tr.codec];
+  if(/^dv/.test(tr.codec))codecs.push(tr.codec.replace(/^dv[hH][1e]/,'hvc1').replace(/^dva[1v]/,'avc1'));
+  if(/^hev1/.test(tr.codec))codecs.push(tr.codec.replace(/^hev1/,'hvc1'));
+  if(/^hvc1/.test(tr.codec))codecs.push(tr.codec.replace(/^hvc1/,'hev1'));
   let config=null;
   for(const codec of codecs){
     const c={codec,codedWidth:tr.video.width,codedHeight:tr.video.height};if(desc)c.description=desc;
     try{if((await VideoDecoder.isConfigSupported(c)).supported){config=c;break}}catch(e){}
   }
-  if(!config)return null;
+  if(!config)return (fastFail='format '+tr.codec+' non pris en charge',null);
   let rot=0;const m=tr.matrix;
   if(m){const a=m[0]/65536,b=m[1]/65536;rot=((Math.round(Math.atan2(b,a)*2/Math.PI)*90)%360+360)%360}
   return {file,samples,config,rot,fdur,fps:Math.round(1/fdur)};
@@ -9541,7 +9547,7 @@ function makeReader(src,s0,s1,cw,ch,pool,keepRaw){
 async function checkSource(src,v,tm,cw,ch){
   const r=makeReader(src,tm-.1,tm+.2,cw,ch,null,true);
   try{
-    const f=await r.raw(tm);if(!f)return false;
+    const f=await r.raw(tm);if(!f){fastFail='aucune image décodée';return false}
     const W=48,H=Math.max(2,Math.round(48*ch/cw));
     const mk=()=>{const c=document.createElement('canvas');c.width=W;c.height=H;return c.getContext('2d',{willReadFrequently:true})};
     const ref=mk();await seek(v,tm+.25*src.fdur);ref.drawImage(v,0,0,W,H);const A=ref.getImageData(0,0,W,H).data;
@@ -9551,8 +9557,7 @@ async function checkSource(src,v,tm,cw,ch){
       let s=0;for(let i=0;i<A.length;i+=4)s+=Math.abs(A[i]-B[i])+Math.abs(A[i+1]-B[i+1])+Math.abs(A[i+2]-B[i+2]);
       s/=A.length*.75;if(!best||s<best.s)best={s,rot};
     }
-    if(best.s>28)return false;
-    src.rot=best.rot;return true;
+    src.rot=best.rot;return true; // la vidéo de Safari peut elle-même être décalée : on ne s'en sert que pour le sens
   }finally{r.close()}
 }
 
@@ -9581,10 +9586,12 @@ async function renderFrameByFrame(track,offset,vids,cw,ch,ctx,useDecoder){
   let src=null,srcFps=30,getImg,cleanup=()=>{};
   if(useDecoder){
     $('rstat').textContent='Lecture de la vidéo…';
-    src=await openSource(videoFile);
+    fastFail='';
+    try{src=await openSource(videoFile)}catch(e){fastFail='lecture : '+(e&&e.message||e)}
     if(!src)return null;
     const c0=chosen[0];
-    if(!(await checkSource(src,vids[0],c0.t+Math.min(.5,c0.src/2),cw,ch)))return null;
+    try{if(!(await checkSource(src,vids[0],c0.t+Math.min(.5,c0.src/2),cw,ch)))return null}
+    catch(e){fastFail='décodage : '+(e&&e.message||e);return null}
     srcFps=src.fps;
   }else{
     $('rstat').textContent='Mesure de la vidéo…';
@@ -9610,7 +9617,7 @@ async function renderFrameByFrame(track,offset,vids,cw,ch,ctx,useDecoder){
     let rvfcOk=!!v.requestVideoFrameCallback,rvfcTried=0;
     async function seekExact(t){
       const p=once(v,'seeked');let q=null,fired=false;
-      if(rvfcOk)q=new Promise(r=>{v.requestVideoFrameCallback(()=>{fired=true;r()});setTimeout(r,rvfcTried<3?400:250)});
+      if(rvfcOk)q=new Promise(r=>{v.requestVideoFrameCallback(()=>{fired=true;r()});setTimeout(r,rvfcTried<3?150:90)});
       v.currentTime=t;await p;
       if(q){await q;if(!fired&&++rvfcTried>=3)rvfcOk=false;else if(fired)rvfcTried=3}
     }
@@ -9662,7 +9669,7 @@ async function renderFrameByFrame(track,offset,vids,cw,ch,ctx,useDecoder){
   const {paint,active}=makePainter(ctx,cw,ch);
   const venc=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>fail=e});
   venc.configure(vcfg);
-  const N=Math.round(total*FPS),t0=performance.now(),speeds=[],modeName=useDecoder?'mode rapide':'mode de secours';
+  const N=Math.round(total*FPS),t0=performance.now(),speeds=[],modeName=useDecoder?'mode rapide':'mode de secours'+(fastFail?' – '+fastFail:'');
   try{
     for(let f=0;f<N;f++){
       if(fail)throw fail;
@@ -9753,7 +9760,7 @@ $('render').onclick=async()=>{
   let file=null;
   const saved=plan.chosen.map(c=>[c.speed,c.src]);
   const restore=()=>plan.chosen.forEach((c,k)=>{[c.speed,c.src]=saved[k]});
-  try{file=await renderFrameByFrame(track,offset,vids,cw,ch,ctx,true)}catch(e){console.warn('lecture directe impossible',e);file=null}
+  try{file=await renderFrameByFrame(track,offset,vids,cw,ch,ctx,true)}catch(e){console.warn('lecture directe impossible',e);fastFail='en cours : '+(e&&e.message||e);file=null}
   if(!file){restore();$('rbar').style.width='0';try{file=await renderFrameByFrame(track,offset,vids,cw,ch,ctx,false)}catch(e){console.warn('rendu image par image impossible',e);file=null}}
   restore();
   if(!file){$('rbar').style.width='0';file=await renderLive(track,offset,vids,cw,ch,ctx)}
