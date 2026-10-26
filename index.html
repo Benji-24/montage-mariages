@@ -103,7 +103,7 @@ ol#list li.pvrow #pv{margin-top:0}
   <div class="sp-title">Montage Mariage</div>
   <div class="sp-sub">Ton film, en quelques gestes</div>
   <div class="sig"><span></span>by_ben<span></span></div>
-  <div class="sp-ver">v2.5 · 26 oct.</div>
+  <div class="sp-ver">v2.6 · 26 oct.</div>
 </div>
 <main>
   <h1>Montage Mariage</h1>
@@ -170,7 +170,7 @@ ol#list li.pvrow #pv{margin-top:0}
     <video id="out" class="hidden" controls playsinline></video>
     <button id="share" class="hidden">Enregistrer / partager la vidéo</button>
   </div>
-  <footer class="credit">Conçu et créé par <b>by_ben</b><span class="ver">Version v2.5 · 26 oct.</span></footer>
+  <footer class="credit">Conçu et créé par <b>by_ben</b><span class="ver">Version v2.6 · 26 oct.</span></footer>
 </main>
 <div id="vids"></div>
 
@@ -9551,12 +9551,20 @@ async function checkSource(src,v,tm,cw,ch){
     const W=48,H=Math.max(2,Math.round(48*ch/cw));
     const mk=()=>{const c=document.createElement('canvas');c.width=W;c.height=H;return c.getContext('2d',{willReadFrequently:true})};
     const ref=mk();await seek(v,tm+.25*src.fdur);ref.drawImage(v,0,0,W,H);const A=ref.getImageData(0,0,W,H).data;
-    let best=null;
-    for(const rot of [src.rot,0,90,180,270]){
+    // le sens se déduit d'abord de la forme : si l'image décodée et la vidéo affichée ont la même
+    // orientation (toutes deux en hauteur ou en largeur), pas de quart de tour (0 ou 180), sinon 90 ou 270
+    const codedPortrait=src.config.codedHeight>src.config.codedWidth,shownPortrait=ch>cw;
+    const pair=codedPortrait===shownPortrait?[0,180]:[90,270];
+    const guess=pair.includes(src.rot)?src.rot:pair[0];
+    const scores={};
+    for(const rot of pair){
       const x=mk();drawRot(x,f,rot,W,H);const B=x.getImageData(0,0,W,H).data;
       let s=0;for(let i=0;i<A.length;i+=4)s+=Math.abs(A[i]-B[i])+Math.abs(A[i+1]-B[i+1])+Math.abs(A[i+2]-B[i+2]);
-      s/=A.length*.75;if(!best||s<best.s)best={s,rot};
+      scores[rot]=s/(A.length*.75);
     }
+    const other=pair.find(r=>r!==guess);
+    // on ne change l'avis des métadonnées que si l'autre sens ressemble nettement mieux
+    let best={rot:scores[other]<scores[guess]*.7?other:guess};
     src.rot=best.rot;return true; // la vidéo de Safari peut elle-même être décalée : on ne s'en sert que pour le sens
   }finally{r.close()}
 }
